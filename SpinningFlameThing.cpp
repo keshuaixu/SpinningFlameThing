@@ -12,8 +12,12 @@ SpinningFlameThing::SpinningFlameThing(AccelStepper *stepper, int initialAngle, 
 void SpinningFlameThing::scan(int beginAngle, int endAngle, float speed){
 	stepper->setMaxSpeed(rapidSpeed);
 	scanSpeed = speed;
-	stepper->moveTo(angleToStep(beginAngle));
-	Serial.println(angleToStep(beginAngle));
+	stepper->moveTo(angleToStep(beginAngle));	
+	scanEndAngle = endAngle;
+
+	lastScanIndexStart = stepToIndex(angleToStep(beginAngle));
+	lastScanIndexEnd = stepToIndex(angleToStep(endAngle));
+
 	state = MOVING_TO_START;
 }
 
@@ -22,7 +26,11 @@ int SpinningFlameThing::angleToStep(int angle){
 }
 
 float SpinningFlameThing::indexToRadians(int index){
-	return mapfloat(index,0.0, (long)(finalAngle - initialAngle)*stepsPerRevolution/(360*4), initialAngle, finalAngle);
+	return mapfloat(index,0.0, (long)(finalAngle - initialAngle)*stepsPerRevolution/(360*STEP_PER_INDEX), initialAngle * 3.14 / 180, finalAngle * 3.14 / 180);
+}
+
+int SpinningFlameThing::stepToIndex(int step){
+	return step / STEP_PER_INDEX;
 }
 
 void SpinningFlameThing::run(){
@@ -31,23 +39,23 @@ void SpinningFlameThing::run(){
 		case MOVING_TO_START:
 {			if (stepper->distanceToGo() == 0){
 				stepper->setMaxSpeed(scanSpeed);
-				stepper->moveTo(angleToStep(finalAngle));
+				stepper->moveTo(angleToStep(scanEndAngle));
 				state = SCANNING;				
 			}}
 		break;
 		case SCANNING:
-{			int thisPosition = stepper->currentPosition() / 4;
+{			int thisPosition = stepper->currentPosition() / STEP_PER_INDEX;
 			if (thisPosition < 0 /*|| thisPosition > */){
 				Serial.println("stepper pos error");
 			}
 			if ( thisPosition != lastPosition ){
-				leftData[thisPosition] = analogRead(pinLeft);
-				rightData[thisPosition] = analogRead(pinRight);
+				leftData[thisPosition] = 1023 - analogRead(pinLeft);
+				rightData[thisPosition] = 1023 - analogRead(pinRight);
 				lastPosition = thisPosition;
 			}
 
 
-			if (stepper->currentPosition() == angleToStep(finalAngle)){
+			if (stepper->currentPosition() == angleToStep(scanEndAngle)){
 				state = IDLE;				
 			}}
 		break;
@@ -69,6 +77,7 @@ void SpinningFlameThing::getFlamePosition(int *high, int *low, int *r, int *thet
 	int rightMaxPos;
 	uint16_t rightMaxVal;
 	uint16_t rightMinVal;
+
 	processFlameData(leftData, lastScanIndexStart, lastScanIndexEnd, &leftMaxPos, &leftMaxVal, &leftMinVal);
 	processFlameData(rightData, lastScanIndexStart, lastScanIndexEnd, &rightMaxPos, &rightMaxVal, &rightMinVal);
 	*high = max(leftMaxVal, rightMaxVal);
@@ -76,7 +85,7 @@ void SpinningFlameThing::getFlamePosition(int *high, int *low, int *r, int *thet
 	float leftAngle = indexToRadians(leftMaxPos);
 	float rightAngle = indexToRadians(rightMaxPos);
 	*theta = (leftAngle + rightAngle) * 180 / 2.0 / 3.14;
-	*r = (3.14 + leftAngle - rightAngle) / 2.0; 
+	*r = 100.0 / cos((3.14 + leftAngle - rightAngle) / 2.0); 
 }
 
 void SpinningFlameThing::processFlameData(uint16_t a[], int start, int end, int *maxPosition, uint16_t *maxValue, uint16_t *minValue){
@@ -88,21 +97,22 @@ void SpinningFlameThing::processFlameData(uint16_t a[], int start, int end, int 
 	int _start;
 	int _end;
 	if (start >= end){
-		_start = start;
-		_end = end;
-	} else {
 		_start = end;
 		_end = start;
+	} else {
+		_start = start;
+		_end = end;
 	}
 	for (i = _start; i <= _end; i++){
-		if (a[i] > max){
+		
+		if ((int)a[i] > max){
 			max = a[i];
 			_maxPosition = i;
 			plateauSize = 1;
-		} else if (a[i] == max){
+		} else if ((int)a[i] == max){
 			plateauSize++;
 		}
-		if (a[i] < min){
+		if ((int)a[i] < min){
 			min = a[i];
 		}
 	}

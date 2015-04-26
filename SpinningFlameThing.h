@@ -10,6 +10,7 @@ public:
 	void scanFull();
 	int angleToStep(int angle);
 	float indexToRadians(int index);
+	int stepToIndex(int step);
 	void processFlameData(uint16_t a[], int start, int end, int *maxPosition, uint16_t *maxValue, uint16_t *minValue);
 	void run();
 	boolean isDone();
@@ -24,7 +25,8 @@ public:
 
 	State state = IDLE;
 
-private:
+
+	const int STEP_PER_INDEX=2;
 	AccelStepper *stepper;
 
 	int initialAngle;
@@ -37,12 +39,15 @@ private:
 	uint16_t leftData[FLAME_MAX_ARRAY_SIZE];
 	uint16_t rightData[FLAME_MAX_ARRAY_SIZE]; 
 
-	const float rapidSpeed = 1000;
+	const float rapidSpeed = 500;
 	float scanSpeed; 
 	int lastPosition = -1;
 	int plateauSize;
 
+	int scanEndAngle;
+
 	int lastScanIndexStart;
 	int lastScanIndexEnd;
+	private:
 };
 #endif
