@@ -1,12 +1,13 @@
 #include "SpinningFlameThing.h"
 
-SpinningFlameThing::SpinningFlameThing(AccelStepper *stepper, int initialAngle, int finalAngle, unsigned int stepsPerRevolution, int pinLeft, int pinRight){
+SpinningFlameThing::SpinningFlameThing(AccelStepper *stepper, int initialAngle, int finalAngle, unsigned int stepsPerRevolution, int pinLeft, int pinRight, int pinSwitch){
 	this->stepper = stepper;
 	this->initialAngle = initialAngle;
 	this->finalAngle = finalAngle;
 	this->stepsPerRevolution = stepsPerRevolution;
 	this->pinLeft = pinLeft;
 	this->pinRight = pinRight;
+	this->pinSwitch = pinSwitch;
 }
 
 void SpinningFlameThing::scan(int beginAngle, int endAngle, float speed){
@@ -34,17 +35,28 @@ int SpinningFlameThing::stepToIndex(int step){
 }
 
 void SpinningFlameThing::run(){
+	if (state == ZEROING){
+		if (digitalRead(pinSwitch) == HIGH){
+			stepper->runSpeed();
+		} else {
+			stepper->setCurrentPosition(angleToStep(finalAngle));
+			state = IDLE;
+		}
+		return;
+	}
+
 	stepper->run();
 	switch (state){
-		case MOVING_TO_START:
-{			if (stepper->distanceToGo() == 0){
+		case MOVING_TO_START:{
+			if (stepper->distanceToGo() == 0){
 				stepper->setMaxSpeed(scanSpeed);
 				stepper->moveTo(angleToStep(scanEndAngle));
 				state = SCANNING;				
-			}}
+			}
+		}
 		break;
-		case SCANNING:
-{			int thisPosition = stepper->currentPosition() / STEP_PER_INDEX;
+		case SCANNING:{
+			int thisPosition = stepper->currentPosition() / STEP_PER_INDEX;
 			if (thisPosition < 0 /*|| thisPosition > */){
 				Serial.println("stepper pos error");
 			}
@@ -53,11 +65,10 @@ void SpinningFlameThing::run(){
 				rightData[thisPosition] = 1023 - analogRead(pinRight);
 				lastPosition = thisPosition;
 			}
-
-
 			if (stepper->currentPosition() == angleToStep(scanEndAngle)){
 				state = IDLE;				
-			}}
+			}
+		}
 		break;
 		case IDLE:
 		break;
@@ -82,8 +93,12 @@ void SpinningFlameThing::getFlamePosition(int *high, int *low, int *r, int *thet
 	processFlameData(rightData, lastScanIndexStart, lastScanIndexEnd, &rightMaxPos, &rightMaxVal, &rightMinVal);
 	*high = max(leftMaxVal, rightMaxVal);
 	*low = min(leftMinVal, rightMinVal);
+
 	float leftAngle = indexToRadians(leftMaxPos);
 	float rightAngle = indexToRadians(rightMaxPos);
+	// Serial.println("pos");
+	// Serial.println(leftAngle);
+	// Serial.println(rightAngle);
 	*theta = (leftAngle + rightAngle) * 180 / 2.0 / 3.14;
 	*r = 100.0 / cos((3.14 + leftAngle - rightAngle) / 2.0); 
 }
@@ -124,5 +139,12 @@ void SpinningFlameThing::processFlameData(uint16_t a[], int start, int end, int 
 
 float SpinningFlameThing::mapfloat(float x, float in_min, float in_max, float out_min, float out_max)
 {
- return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+	return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
+
+void SpinningFlameThing::zero(){
+	pinMode(pinSwitch,INPUT_PULLUP);
+	stepper->setMaxSpeed(200);
+	stepper->setSpeed(200);
+	state = ZEROING;
 }
